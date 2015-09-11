@@ -12,11 +12,7 @@
  * A TestRunner for the Command Line Interface (CLI)
  * PHP SAPI Module.
  *
- * @author     Sebastian Bergmann <sebastian@phpunit.de>
- * @copyright  Sebastian Bergmann <sebastian@phpunit.de>
- * @license    http://www.opensource.org/licenses/BSD-3-Clause  The BSD 3-Clause License
- * @link       http://www.phpunit.de/
- * @since      Class available since Release 3.0.0
+ * @since Class available since Release 3.0.0
  */
 class PHPUnit_TextUI_Command
 {
@@ -568,6 +564,9 @@ class PHPUnit_TextUI_Command
                 $configuration = PHPUnit_Util_Configuration::getInstance(
                     $this->arguments['configuration']
                 );
+            } catch (Throwable $e) {
+                print $e->getMessage() . "\n";
+                exit(PHPUnit_TextUI_TestRunner::FAILURE_EXIT);
             } catch (Exception $e) {
                 print $e->getMessage() . "\n";
                 exit(PHPUnit_TextUI_TestRunner::FAILURE_EXIT);
@@ -591,6 +590,10 @@ class PHPUnit_TextUI_Command
              */
             if (isset($phpunit['stderr']) && ! isset($this->arguments['stderr'])) {
                 $this->arguments['stderr'] = $phpunit['stderr'];
+            }
+
+            if (isset($phpunit['columns']) && ! isset($this->arguments['columns'])) {
+                $this->arguments['columns'] = $phpunit['columns'];
             }
 
             if (isset($phpunit['printerClass'])) {
@@ -792,7 +795,7 @@ class PHPUnit_TextUI_Command
 
         // Workaround for https://bugs.php.net/bug.php?id=65538
         $caFile = dirname($tempFilename) . '/ca.pem';
-        copy(__PHPUNIT_PHAR_ROOT__ . '/ca.pem', $caFile);
+        copy(__PHPUNIT_PHAR_ROOT__ . '/phar/ca.pem', $caFile);
 
         print 'Updating the PHPUnit PHAR ... ';
 
@@ -825,7 +828,13 @@ class PHPUnit_TextUI_Command
             unset($phar);
             rename($tempFilename, $localFilename);
             unlink($caFile);
-        } catch (Exception $e) {
+        } catch (Throwable $_e) {
+            $e = $_e;
+        } catch (Exception $_e) {
+            $e = $_e;
+        }
+
+        if (isset($e)) {
             unlink($caFile);
             unlink($tempFilename);
             print " done\n\n" . $e->getMessage() . "\n";
