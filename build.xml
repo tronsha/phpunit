@@ -7,37 +7,28 @@
         <delete dir="${basedir}/bin"/>
         <delete dir="${basedir}/vendor"/>
         <delete file="${basedir}/composer.lock"/>
+        <delete dir="${basedir}/build/documentation"/>
+        <delete dir="${basedir}/build/logfiles"/>
         <delete dir="${basedir}/build/phar"/>
         <delete>
             <fileset dir="${basedir}/build">
-                <include name="**/*.phar"/>
-                <include name="**/*.phar.asc"/>
+                <include name="**/phpunit*.phar"/>
+                <include name="**/phpunit*.phar.asc"/>
             </fileset>
         </delete>
 
         <property name="clean.done" value="true"/>
     </target>
 
-    <target name="download-composer-phar" unless="download-composer-phar.done" description="Download composer.phar (if it does not exist or is outdated)">
-        <tstamp>
-            <format property="thirty.days.ago" pattern="MM/dd/yyyy hh:mm aa" offset="-30" unit="day"/>
-        </tstamp>
-
-        <delete>
-            <fileset dir="${basedir}">
-                <include name="composer.phar"/>
-                <date datetime="${thirty.days.ago}" when="before"/>
-            </fileset>
-        </delete>
-
-        <get src="https://getcomposer.org/composer.phar" dest="${basedir}/composer.phar" skipexisting="true"/>
-
-        <property name="download-composer-phar.done" value="true"/>
+    <target name="prepare" unless="prepare.done" depends="clean" description="Prepare for build">
+        <mkdir dir="${basedir}/build/documentation"/>
+        <mkdir dir="${basedir}/build/logfiles"/>
+        <property name="prepare.done" value="true"/>
     </target>
 
-    <target name="validate-composer-json" unless="validate-composer-json.done" depends="download-composer-phar" description="Validate composer.json">
-        <exec executable="php" failonerror="true" taskname="composer">
-            <arg value="${basedir}/composer.phar"/>
+    <target name="validate-composer-json" unless="validate-composer-json.done" description="Validate composer.json">
+        <exec executable="${basedir}/build/tools/composer" failonerror="true" taskname="composer">
+            <env key="COMPOSER_DISABLE_XDEBUG_WARN" value="1"/>
             <arg value="validate"/>
             <arg value="--no-check-lock"/>
             <arg value="--strict"/>
@@ -51,9 +42,9 @@
         <available file="${basedir}/composer.lock" property="dependencies-installed"/>
     </target>
 
-    <target name="install-dependencies" unless="dependencies-installed" depends="-dependencies-installed,download-composer-phar,validate-composer-json" description="Install dependencies with Composer">
-        <exec executable="php">
-            <arg value="${basedir}/composer.phar"/>
+    <target name="install-dependencies" unless="dependencies-installed" depends="-dependencies-installed,validate-composer-json" description="Install dependencies with Composer">
+        <exec executable="${basedir}/build/tools/composer" taskname="composer">
+            <env key="COMPOSER_DISABLE_XDEBUG_WARN" value="1"/>
             <arg value="install"/>
         </exec>
     </target>
@@ -89,12 +80,7 @@
         <exec executable="${basedir}/phpunit" taskname="phpunit"/>
     </target>
 
-    <target name="signed-phar" depends="phar" description="Create signed PHAR archive of PHPUnit and all its dependencies (release)">
-        <exec executable="bash" outputproperty="version">
-            <arg value="-c"/>
-            <arg value="${basedir}/phpunit --version | awk 'BEGIN { ORS = &quot;&quot;; } {print $2}'"/>
-        </exec>
-
+    <target name="signed-phar" depends="phar" description="Create signed PHAR archive of PHPUnit and all its dependencies">
         <exec executable="gpg" failonerror="true">
             <arg value="--armor"/>
             <arg value="--detach-sign"/>
@@ -108,20 +94,15 @@
         </exec>
     </target>
 
-    <target name="phar" depends="-phar-prepare" description="Create PHAR archive of PHPUnit and all its dependencies (release)">
-        <exec executable="bash" outputproperty="version">
-            <arg value="-c"/>
-            <arg value="${basedir}/phpunit --version | awk 'BEGIN { ORS = &quot;&quot;; } {print $2}'"/>
-        </exec>
-
+    <target name="phar" depends="-phar-determine-version,-phar-prepare" description="Create PHAR archive of PHPUnit and all its dependencies">
         <antcall target="-phar-build">
-            <param name="version" value="${version}"/>
+            <param name="type" value="release"/>
         </antcall>
     </target>
 
-    <target name="phar-beta" depends="-phar-prepare" description="Create PHAR archive of PHPUnit and all its dependencies (beta)">
+    <target name="phar-nightly" depends="-phar-prepare" description="Create PHAR archive of PHPUnit and all its dependencies (nightly)">
         <antcall target="-phar-build">
-            <param name="version" value="beta"/>
+            <param name="type" value="nightly"/>
         </antcall>
     </target>
 
@@ -129,8 +110,7 @@
         <mkdir dir="${basedir}/build/phar"/>
         <copy file="${basedir}/composer.json" tofile="${basedir}/composer.json.bak"/>
 
-        <exec executable="php">
-            <arg value="composer.phar"/>
+        <exec executable="${basedir}/build/tools/composer">
             <arg value="require"/>
             <arg value="phpunit/dbunit:~2.0"/>
             <arg value="phpunit/php-invoker:~1.1"/>
@@ -280,9 +260,23 @@
             </fileset>
         </copy>
 
+        <copy file="${basedir}/vendor/phpdocumentor/reflection-common/LICENSE" tofile="${basedir}/build/phar/phpdocumentor-reflection-common/LICENSE"/>
+        <copy todir="${basedir}/build/phar/phpdocumentor-reflection-common">
+            <fileset dir="${basedir}/vendor/phpdocumentor/reflection-common/src">
+                <include name="**/*.php" />
+            </fileset>
+        </copy>
+
         <copy file="${basedir}/vendor/phpdocumentor/reflection-docblock/LICENSE" tofile="${basedir}/build/phar/phpdocumentor-reflection-docblock/LICENSE"/>
         <copy todir="${basedir}/build/phar/phpdocumentor-reflection-docblock">
             <fileset dir="${basedir}/vendor/phpdocumentor/reflection-docblock/src">
+                <include name="**/*.php" />
+            </fileset>
+        </copy>
+
+        <copy file="${basedir}/vendor/phpdocumentor/type-resolver/LICENSE" tofile="${basedir}/build/phar/phpdocumentor-type-resolver/LICENSE"/>
+        <copy todir="${basedir}/build/phar/phpdocumentor-type-resolver">
+            <fileset dir="${basedir}/vendor/phpdocumentor/type-resolver/src">
                 <include name="**/*.php" />
             </fileset>
         </copy>
@@ -300,9 +294,16 @@
                 <include name="**/*.php" />
             </fileset>
         </copy>
+
+        <copy file="${basedir}/vendor/webmozart/assert/LICENSE" tofile="${basedir}/build/phar/webmozart-assert/LICENSE"/>
+        <copy todir="${basedir}/build/phar/webmozart-assert">
+            <fileset dir="${basedir}/vendor/webmozart/assert/src">
+                <include name="**/*.php" />
+            </fileset>
+        </copy>
     </target>
 
-    <target name="-phar-build">
+    <target name="-phar-build" depends="-phar-determine-version">
         <copy todir="${basedir}/build/phar/phpunit">
             <fileset dir="${basedir}/src">
                 <include name="**/*.php"/>
@@ -312,9 +313,10 @@
 
         <exec executable="${basedir}/build/phar-version.php" outputproperty="_version">
             <arg value="${version}"/>
+            <arg value="${type}"/>
         </exec>
 
-        <exec executable="${basedir}/build/bin/phpab">
+        <exec executable="${basedir}/build/tools/phpab" taskname="phpab">
             <arg value="--all" />
             <arg value="--static" />
             <arg value="--once" />
@@ -328,7 +330,7 @@
             <arg path="${basedir}/build/phar" />
         </exec>
 
-        <exec executable="${basedir}/build/bin/phpab">
+        <exec executable="${basedir}/build/tools/phpab" taskname="phpab">
             <arg value="--all" />
             <arg value="--nolower" />
             <arg value="--static" />
@@ -343,6 +345,54 @@
         </exec>
 
         <chmod file="${basedir}/build/phpunit-${_version}.phar" perm="ugo+rx"/>
+    </target>
+
+    <target name="-phar-determine-version">
+        <exec executable="bash" outputproperty="version">
+            <arg value="-c"/>
+            <arg value="${basedir}/phpunit --version | awk 'BEGIN { ORS = &quot;&quot;; } {print $2}'"/>
+        </exec>
+    </target>
+
+    <target name="generate-project-documentation" depends="-phploc,-phpcs,-phpmd,-phpunit">
+        <exec executable="${basedir}/build/tools/phpdox" dir="${basedir}/build" taskname="phpdox"/>
+    </target>
+
+    <target name="-phploc" depends="prepare">
+        <exec executable="${basedir}/build/tools/phploc" output="/dev/null" taskname="phploc">
+            <arg value="--count-tests"/>
+            <arg value="--log-xml"/>
+            <arg path="${basedir}/build/logfiles/phploc.xml"/>
+            <arg path="${basedir}/src"/>
+            <arg path="${basedir}/tests"/>
+        </exec>
+    </target>
+
+    <target name="-phpcs" depends="prepare">
+        <exec executable="${basedir}/build/tools/phpcs" output="/dev/null" taskname="phpcs">
+            <arg value="--report=checkstyle"/>
+            <arg value="--report-file=${basedir}/build/logfiles/checkstyle.xml"/>
+            <arg value="--standard=PSR2"/>
+            <arg value="--extensions=php"/>
+            <arg path="${basedir}/src"/>
+        </exec>
+    </target>
+
+    <target name="-phpmd" depends="prepare">
+        <exec executable="${basedir}/build/tools/phpmd" taskname="phpmd">
+            <arg path="${basedir}/src"/>
+            <arg value="xml"/>
+            <arg path="${basedir}/build/phpmd.xml"/>
+            <arg value="--reportfile"/>
+            <arg path="${basedir}/build/logfiles/pmd.xml"/>
+        </exec>
+    </target>
+
+    <target name="-phpunit" depends="setup">
+        <exec executable="${basedir}/phpunit" taskname="phpunit">
+            <arg value="--configuration"/>
+            <arg path="${basedir}/build/phpunit.xml"/>
+        </exec>
     </target>
 </project>
 
