@@ -340,13 +340,13 @@ class PHPUnit_TextUI_Command
                         getcwd()
                     );
 
-                    print "Bootstrap script (relative to path shown above; default: vendor/autoload.php): ";
+                    print 'Bootstrap script (relative to path shown above; default: vendor/autoload.php): ';
                     $bootstrapScript = trim(fgets(STDIN));
 
-                    print "Tests directory (relative to path shown above; default: tests): ";
+                    print 'Tests directory (relative to path shown above; default: tests): ';
                     $testsDirectory = trim(fgets(STDIN));
 
-                    print "Source directory (relative to path shown above; default: src): ";
+                    print 'Source directory (relative to path shown above; default: src): ';
                     $src = trim(fgets(STDIN));
 
                     if ($bootstrapScript == '') {
@@ -361,7 +361,7 @@ class PHPUnit_TextUI_Command
                         $src = 'src';
                     }
 
-                    $generator = new ConfigurationGenerator;
+                    $generator = new PHPUnit_Util_ConfigurationGenerator;
 
                     file_put_contents(
                         'phpunit.xml',
